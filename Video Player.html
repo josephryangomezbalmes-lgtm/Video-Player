@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Video Player</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; outline: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    html, body { height: 100%; overflow: hidden; background: #000; color: #e0e0e0; font-family: Arial, sans-serif; touch-action: manipulation; }
+    #player { position: relative; display: flex; flex-direction: column; height: 100%; width: 100%; overflow: hidden; background: #000; }
+    
+    .bar { position: absolute; left: 0; right: 0; z-index: 10; transition: opacity 0.3s; opacity: 1; }
+    #player.idle .bar { opacity: 0; pointer-events: none; }
+    
+    .hdr { top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(180deg, rgba(0,0,0,0.85), transparent); }
+    .fn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-size: 14px; margin-right: 12px; }
+    .hdr button { background: none; border: none; color: #ff9500; cursor: pointer; font-size: 14px; font-weight: bold; }
+    
+    .tls { top: 48px; display: flex; justify-content: flex-end; gap: 20px; padding: 0 16px; }
+    .tl { display: flex; align-items: center; gap: 4px; font-size: 12px; color: rgba(255,255,255,0.8); cursor: pointer; background: rgba(0,0,0,0.4); padding: 4px 10px; border-radius: 12px; }
+    .tl svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+    
+    .vid-a { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1; }
+    video { width: 100%; height: 100%; object-fit: contain; cursor: pointer; }
+    @media (orientation: landscape) { video { padding: 15px 0; } }
+    
+    .b-controls { bottom: 0; background: linear-gradient(0deg, rgba(0,0,0,0.9), rgba(0,0,0,0.4) 70%, transparent); padding-bottom: 8px; }
+    .sk-r { display: flex; align-items: center; gap: 12px; padding: 4px 16px; font-size: 12px; color: #ccc; }
+    #sk { flex: 1; height: 4px; background: linear-gradient(to right, #ff9500 0%, #ff9500 0%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.3) 100%); -webkit-appearance: none; cursor: pointer; border-radius: 2px; }
+    #sk::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #ff9500; }
+    
+    .ctls { display: flex; justify-content: space-evenly; align-items: center; padding: 8px 0 6px; width: 100%; }
+    .ctls button { background: none; border: none; cursor: pointer; padding: 8px; color: #e0e0e0; display: flex; }
+    .ctls svg { width: 24px; height: 24px; fill: currentColor; }
+    .ctls .ply svg { width: 32px; height: 32px; fill: #ff9500; }
+    .vol-g { display: flex; align-items: center; gap: 6px; }
+    #vol { width: 60px; height: 3px; background: rgba(255,255,255,0.3); -webkit-appearance: none; }
+    #vol::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+    
+    .ld { position: absolute; color: #aaa; font-size: 14px; display: none; background: rgba(0,0,0,0.7); padding: 6px 14px; border-radius: 4px; z-index: 5; pointer-events: none; }
+    .gst { position: absolute; top: 0; bottom: 0; width: 35%; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(255,255,255,0.15); opacity: 0; pointer-events: none; transition: 0.2s; border-radius: 50%; font-weight: bold; z-index: 4; }
+    .gst.l { left: 0; } .gst.r { right: 0; } .gst.a { opacity: 1; }
+    
+    #player.is-locked .hdr, 
+    #player.is-locked .tls, 
+    #player.is-locked .sk-r,
+    #player.is-locked .ctls > *:not(#b-lk) { display: none !important; }
+    #player.is-locked .b-controls { background: none !important; }
+    #player.is-locked .ctls { justify-content: center !important; }
+    #b-lk { z-index: 30; opacity: 1 !important; pointer-events: auto !important; }
+  </style>
+</head>
+<body>
+  <div id="player">
+    <div class="bar hdr"><div class="fn" id="f-n">No video</div><button id="o-f">Open</button><input id="f" type="file" accept="video/*" style="display:none"></div>
+    <div class="bar tls">
+      <div class="tl" id="b-sp"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="s-t">1.0x</span></div>
+      <div class="tl" id="b-rs"><svg viewBox="0 0 24 24"><path d="M3 2v6h6M21 12A9 9 0 0 0 6 5.3L3 8M21 22v-6h-6M3 12a9 9 0 0 0 15 6.7l3-3"/></svg><span>Reset</span></div>
+    </div>
+    
+    <div class="vid-a">
+      <video id="v" playsinline preload="auto"></video>
+      <div class="ld" id="l">Buffering...</div>
+      <div class="gst l" id="g-l">-10s</div>
+      <div class="gst r" id="g-r">+10s</div>
+    </div>
+
+    <div class="bar b-controls">
+      <div class="sk-r"><span id="c">0:00</span><input id="sk" type="range" value="0" step="0.1"><span id="d">0:00</span></div>
+      <div class="ctls">
+        <button id="b-lk"><svg id="l-i" viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+        <div class="vol-g"><button id="b-m"><svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path id="a-w" d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></button><input id="vol" type="range" min="0" max="1" step="0.05" value="1"></div>
+        <button id="b-pv"><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+        <button id="b-p" class="ply"><svg id="p-i" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+        <button id="b-nx"><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+        <button id="b-ex"><svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const getEl = id => document.getElementById(id);
+    const bindEv = (elem, events, handler) => events.split(' ').forEach(evt => elem.addEventListener(evt, handler));
+    
+    const v = getEl('v'), sk = getEl('sk'), vl = getEl('vol'), p = getEl('player'), li = getEl('l-i'), l = getEl('l'), sps = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    let si = 2, isSk = 0, lk = 0, lt = 0, currUrl = null, idleT = null, shouldPlay = false, loadRetries = 0, bufTimeout = null;
+
+    const fmt = s => (!s || isNaN(s) || !isFinite(s)) ? '0:00' : (Math.floor(s / 60) + ':' + Math.floor(s % 60).toString().padStart(2, '0'));
+    const skR = s => { if (v.duration && isFinite(v.duration)) v.currentTime = Math.min(Math.max(0, v.currentTime + s), v.duration); };
+    const tP = () => { if (v.src) v.paused ? v.play().catch(() => {}) : v.pause(); };
+    const uV = () => { v.muted = (v.volume === 0); getEl('a-w').style.display = v.muted ? 'none' : 'block'; };
+    const sS = r => { v.playbackRate = r; getEl('s-t').textContent = r + 'x'; };
+    const tF = async () => {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await p.requestFullscreen().then(() => {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(() => {});
+          }
+        }).catch(() => {});
+      }
+    };
+    const gst = e => { e.classList.add('a'); setTimeout(() => e.classList.remove('a'), 400); };
+    const showL = t => { l.textContent = t; l.style.display = 'block'; };
+    const hideL = () => { l.style.display = 'none'; clearTimeout(bufTimeout); };
+
+    const uSkBg = () => {
+      const x = sk.value || 0;
+      sk.style.background = `linear-gradient(to right, #ff9500 0%, #ff9500 ${x}%, rgba(255,255,255,0.3) ${x}%, rgba(255,255,255,0.3) 100%)`;
+    };
+
+    const resetIdle = () => {
+      p.classList.remove('idle');
+      clearTimeout(idleT);
+      if (!v.paused) idleT = setTimeout(() => p.classList.add('idle'), 3000);
+    };
+
+    const startBufWatchdog = () => {
+      showL('Buffering...');
+      clearTimeout(bufTimeout);
+      bufTimeout = setTimeout(() => {
+        if (v.seeking || v.readyState < 3) {
+          if (v.currentTime > 0.5) v.currentTime -= 0.1;
+        }
+      }, 4000);
+    };
+
+    bindEv(p, 'mousemove touchstart click', resetIdle);
+
+    getEl('o-f').addEventListener('click', () => getEl('f').click());
+    getEl('f').addEventListener('change', () => {
+      const f = getEl('f').files[0];
+      if (f) {
+        shouldPlay = !v.paused;
+        showL('Loading...');
+        
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+
+        if (currUrl) URL.revokeObjectURL(currUrl);
+        loadRetries = 0;
+
+        setTimeout(() => {
+          currUrl = URL.createObjectURL(f);
+          v.src = currUrl;
+          getEl('f-n').textContent = f.name;
+          v.load();
+        }, 50);
+      }
+    });
+
+    v.addEventListener('canplay', () => {
+      hideL();
+      getEl('d').textContent = fmt(v.duration);
+      if (shouldPlay) v.play().catch(() => {});
+    });
+    v.addEventListener('seeking', startBufWatchdog);
+    v.addEventListener('waiting', startBufWatchdog);
+    v.addEventListener('seeked', hideL);
+    v.addEventListener('playing', () => { hideL(); resetIdle(); });
+    
+    v.addEventListener('error', () => {
+      if (loadRetries < 3 && currUrl) {
+        loadRetries++;
+        showL('Retrying...');
+        setTimeout(() => { 
+          v.load(); 
+        }, 300);
+      } else {
+        showL('Error loading video');
+        getEl('f-n').textContent = "Format Error";
+      }
+    });
+
+    v.addEventListener('play', () => {
+      getEl('p-i').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+      resetIdle();
+    });
+    v.addEventListener('pause', () => {
+      getEl('p-i').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+      resetIdle();
+    });
+    
+    v.addEventListener('timeupdate', () => {
+      if (v.duration && isFinite(v.duration) && !isSk) {
+        sk.value = (v.currentTime / v.duration) * 100;
+        getEl('c').textContent = fmt(v.currentTime);
+        uSkBg();
+      } else if (!isFinite(v.duration)) {
+        getEl('c').textContent = fmt(v.currentTime);
+        getEl('d').textContent = '0:00';
+      }
+    });
+
+    getEl('b-p').addEventListener('click', tP);
+    getEl('vol').addEventListener('input', () => { v.volume = vl.value; uV(); });
+    getEl('b-m').addEventListener('click', () => { v.muted = !v.muted; uV(); });
+    getEl('b-sp').addEventListener('click', () => { si = (si + 1) % sps.length; sS(sps[si]); });
+    getEl('b-rs').addEventListener('click', () => { si = 2; sS(1); });
+    getEl('b-ex').addEventListener('click', tF);
+    getEl('b-pv').addEventListener('click', () => skR(-10));
+    getEl('b-nx').addEventListener('click', () => skR(10));
+    
+    sk.addEventListener('input', () => {
+      isSk = 1;
+      if (v.duration && isFinite(v.duration)) getEl('c').textContent = fmt((sk.value / 100) * v.duration);
+      uSkBg();
+    });
+    sk.addEventListener('change', () => {
+      if (v.duration && isFinite(v.duration)) v.currentTime = (sk.value / 100) * v.duration;
+      isSk = 0;
+    });
+
+    getEl('b-lk').addEventListener('click', () => {
+      lk = !lk;
+      p.classList.toggle('is-locked', lk);
+      li.innerHTML = lk ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="2" fill="currentColor"/>' : '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>';
+      li.style.stroke = lk ? '#ff9500' : '#e0e0e0';
+      resetIdle();
+    });
+
+    v.addEventListener('click', e => {
+      const n = Date.now(), r = v.getBoundingClientRect(), x = e.clientX - r.left;
+      if (lk) {
+        p.classList.contains('idle') ? resetIdle() : p.classList.toggle('idle');
+        return;
+      }
+      if (n - lt < 300) {
+        if (x < r.width / 2) { skR(-10); gst(getEl('g-l')); } else { skR(10); gst(getEl('g-r')); }
+      } else {
+        p.classList.contains('idle') ? resetIdle() : p.classList.toggle('idle');
+      }
+      lt = n;
+    });
+
+    document.addEventListener('keydown', e => {
+      if (lk) return;
+      resetIdle();
+      const k = e.key.toLowerCase();
+      if (k === ' ' || k === 'k') { e.preventDefault(); tP(); }
+      else if (k === 'f') { e.preventDefault(); tF(); }
+      else if (k === 'm') { getEl('b-m').click(); }
+      else if (k === 'arrowleft') skR(-5);
+      else if (k === 'arrowright') skR(5);
+      else if (k === 'arrowup') { e.preventDefault(); vl.value = Math.min(1, +vl.value + 0.1); vl.dispatchEvent(new Event('input')); }
+      else if (k === 'arrowdown') { e.preventDefault(); vl.value = Math.max(0, +vl.value - 0.1); vl.dispatchEvent(new Event('input')); }
+    });
+  </script>
+</body>
+</html>
